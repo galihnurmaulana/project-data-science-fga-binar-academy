@@ -1,0 +1,451 @@
+##Data Understanding##
+
+#import file csv
+from google.colab import files
+uploaded = files.upload()
+
+#import library
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+%matplotlib inline
+import seaborn as sns
+from scipy import stats
+
+#import library scikit-learn untuk proses statistika san meachine learning
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler
+
+from sklearn.model_selection import train_test_split
+from sklearn.decomposition import PCA
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+
+from sklearn import model_selection
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import roc_auc_score
+from sklearn.metrics import f1_score
+from sklearn.metrics import log_loss
+
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import accuracy_score
+from sklearn.datasets import load_digits
+from sklearn.feature_selection import SelectKBest, chi2
+
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import GridSearchCV
+
+#read file
+df = pd.read_csv('/content/Data Train (2).csv')
+df.info()
+df.head() #churn = dependent
+
+
+##Data Cleaning##
+df.info()
+
+#cek missing value
+df.isna().sum() # Data bersih tidak memiliki null # Data tidak memerlukan langkah fillna
+
+#cek data duplicate
+df.duplicated().sum() # data bersih tanpa duplicate
+
+## Data Pre-Processing
+Kategorisasi Data
+(categorical or numerical)
+
+Categorical
+
+state
+area_code
+international_plan
+voice_mail_plan
+churn
+Numerical
+
+account_length
+number_vmail_messages
+total_day_minutes
+total_day_calls
+total_day_charge
+total_eve_minutes
+total_eve_calls
+total_eve_charge
+total_night_minutes
+total_night_calls
+total_night_charge
+total_intl_minutes
+total_intl_calls
+total_intl_charge
+number_customer_service_calls ##
+
+#kategorikan data sesuai tipe data
+categorical_col = ['state', 'area_code', 'international_plan', 'voice_mail_plan', 'churn']
+numeric_col = ['account_length', 'number_vmail_messages', 'total_day_minutes', 'total_day_calls',
+               'total_day_charge', 'total_eve_minutes', 'total_eve_calls', 'total_eve_charge',
+               'total_night_minutes', 'total_night_calls', 'total_night_charge', 'total_intl_minutes',
+               'total_intl_calls', 'total_intl_charge', 'number_customer_service_calls']
+
+#cek data unique
+df.nunique().sort_values()
+
+## Cek Outlier ##
+df[numeric_col].hist(bins=50, figsize=(20,15)) #semua terdistribusi normal kecuali total_intl_calls, number_customer_service_calls, dan number_vmail_messages
+
+#Boxplot untuk mengindentifikasi outliers
+fig = plt.figure(figsize=[32,24])
+fig.suptitle('BOXPLOT OF NUMERICAL DATA', fontsize=25, fontweight='bold')
+fig.subplots_adjust(top=0.92);
+fig.subplots_adjust(hspace=0.5, wspace=0.4);
+for i ,column in enumerate(numeric_col):
+    ax1 = fig.add_subplot(6,3, i+1);
+    ax1 = sns.boxplot(data = df, x=column);
+
+    ax1.set_title(f'{column}')
+    ax1.set_xlabel(f'{column}')
+
+#Penangan jika numerical data terdapat Outliers menggunakan IQR
+# Dan menggunakan capping (mengubah nilai outliers dengan nilai upper / lower limit)
+dict = {}
+for col in numeric_col:
+    Q1 = df[col].quantile(0.25)
+    Q3 = df[col].quantile(0.75)
+    IQR  = Q3 - Q1
+    upper_limit = Q1 + 1.5 * IQR
+    lower_limit = Q3 - 1.5 * IQR
+    dict['upper_limit' + col] = upper_limit
+    dict['lower_limit' + col] = lower_limit
+for col in numeric_col:
+    df[col] = np.where(
+        df[col] > dict['upper_limit' + col],
+        dict['upper_limit' + col],
+        np.where(
+            df[col] < dict['lower_limit' + col],
+            dict['lower_limit' + col],
+            df[col]
+        )
+    )
+
+#Boxplot setelah cleaning outlier
+fig = plt.figure(figsize=[32,24])
+fig.suptitle('DATA BLOXPLOT AFTER OULIERS CLEANING', fontsize=18, fontweight='bold')
+fig.subplots_adjust(top=0.92);
+fig.subplots_adjust(hspace=0.5, wspace=0.4);
+for i ,col in enumerate(numeric_col):
+    ax1 = fig.add_subplot(6,3, i+1);
+    ax1 = sns.boxplot(data = df, x=col);
+
+    ax1.set_title(f'{col}')
+    ax1.set_xlabel(f'{col}')
+
+## EDA (Exploraroty Data Analysis) ##
+#Measure of Central Tendency
+df.describe()
+df.describe(include='all')
+
+#melihat unique value
+df.nunique().sort_values() #dari data unique ini dapat kita ketahui bahwa tidak ada inconsistent data, dan tidak ada outliers pada categorical data
+
+print(df['state'].unique())
+print('Total state: ', df['state'].nunique())
+
+print(df['area_code'].unique())
+print('Total area code: ', df['area_code'].value_counts())
+
+print(df['international_plan'].unique())
+print(df['international_plan'].value_counts())
+
+print(df['voice_mail_plan'].unique())
+print(df['voice_mail_plan'].value_counts())
+
+## Analisa Multivariat ##
+df.info()
+
+plt.figure(figsize=(30,15))
+corr_matrix = df.corr()
+
+sns.heatmap(corr_matrix, annot=True, cmap='viridis')
+plt.show()
+
+## terdapat multikolinearitas:
+total_day_minutes and total_day_charge
+total_eve_minutes and total_eve_charge
+total_night_minutes and total_night_charge
+total_intl_minutes and total_intl_charge
+kita harus melakukan treatment untuk data ini, jika tidak maka akan mengganggu model regresi yang akan kita gunakan, menyebabkan tidak stabilnya coefficient, overfitting dan bisa mengurangi presisi model
+salah satu cara untuk mengatasi model ini adalah, dengan melakukan kombinasi variable yang terindikasi multikolinieritas
+
+total_charge = total_day_charge + total_eve_charge + total_night_charge
+total_minutes = total_day_minutes+total_eve_minutes+ total_night_minutes
+
+atau kita bisa mengeliminasi salah satu variable yang memiliki korelasi tinggi tersebut
+ini kita gunakan pada international minutes dan charge, karena dalam data kami mengamati pengaruh international plan terhadap churn maka, kami memberi treatment pada multikolinieritas ini dengan drop total international minutes
+namun dari heatmap ini dapat diketahui bahwa variable lain memiliki korelasi antar variable yang rendah, sehingga kita perlu melakukan penelusuran lebih lanjut menggunakan analisa univariat dan bivariat ##
+
+## Interpretasi
+dapat dilihat bahwa seluruh bentuk transaksi vmail messages,eve minutes, panggilan malam, dan panggilan international
+memiliki korelasi yang sangat kuat dengan data harga per masing-masing panggilan
+menunjukkan setiap penambahan lama waktu transaksi maka harga yang dibebankan kepada konsumen akan semakin meningkat ##
+
+#Analisa Univariat
+#Mengelompokkan dataset (kategorikal dan numerikal)
+numerical_col = ['account_length', 'number_vmail_messages', 'total_day_minutes', 'total_day_calls', 'total_day_charge', 'total_eve_minutes',
+               'total_eve_calls', 'total_eve_charge', 'total_night_minutes', 'total_night_calls', 'total_night_charge', 'total_intl_minutes',
+               'total_intl_calls', 'total_intl_charge', 'number_customer_service_calls']
+categorical_col = ['state', 'area_code', 'international_plan', 'voice_mail_plan', 'churn']
+
+#PERSENTASE CHURN KONSUMEN
+# Melihat berapa banyak churn dilakukan oleh pelanggan
+df.groupby('churn').size().plot(kind='pie', autopct = '%.1f%%', radius=1)
+
+#DEMOGRAFI
+# area_code, international_plan, voice_mail_plan yang melakukan churn
+fig, axs = plt.subplots(1, 3, figsize=(14,5))
+
+# Count plot AREA CODE
+sns.countplot(x='area_code', hue='churn', data=df, ax=axs[0])
+axs[0].set_title('Churn Area Code')
+
+# Count plot INTERNATIONAL PLAN
+sns.countplot(x='international_plan', hue='churn', data=df, ax=axs[1])
+axs[1].set_title('Churn International Plan')
+
+# Count plot for VOICE MAIL PLAN
+sns.countplot(x='voice_mail_plan', hue='churn', data=df, ax=axs[2])
+axs[2].set_title('Churn Voice Mail Plan')
+
+plt.tight_layout()
+plt.show()
+
+## Insight :
+Pelanggan paling banyak berasal dari area code 415, diikuti oleh area code 408 dan 510
+Mayoritas pelanggan tidak menggunakan layanan international, dan tidak menggunakan voice mail
+area 415 memiliki tingkat paling tinggi
+pelanggan yang tidak melakukan international plan lebih cenderung mempertahankan untuk berlangganan dibanding pelanggan yang melakukan langganan international (PERLU PENINGKATAN DI INTERNATIONAL PLAN)
+pelanggan yang tidak melakukan langganan voice mail cenderung melakukan churn dibandingkan yang melakukan langganan voice mail (PERLU PROMOSI TENTANG HARGA VOICE MAIL YANG TERJANGKAU, SEHINGGA PELANGGAN YANG BELUM MELAKUKAN LANGGANAN VOICE MAIL DAPAT MERASAKAN LAYANAN INI) ##
+
+#HUBUNGAN NUMERICAL DATA WITH CHURN
+categorical_col = ['state', 'area_code', 'international_plan', 'voice_mail_plan', 'churn']
+numeric_col = ['account_length', 'number_vmail_messages', 'total_day_minutes', 'total_day_calls',
+               'total_day_charge', 'total_eve_minutes', 'total_eve_calls', 'total_eve_charge',
+               'total_night_minutes', 'total_night_calls', 'total_night_charge', 'total_intl_minutes',
+               'total_intl_calls', 'total_intl_charge', 'number_customer_service_calls']
+
+## total_minutes
+total_calls
+total_charge
+tapi keluarin international, dipisah sendiri
+number vmail messages
+number_customer_service_calls ##
+
+#Features
+total_durasi= df['total_day_minutes'] + df['total_eve_minutes'] + df['total_night_minutes']
+total_charge = df['total_day_charge'] + df['total_eve_charge'] + df['total_night_charge']
+total_calls = df['total_day_calls'] + df['total_eve_calls'] + df['total_night_calls']
+
+df['total_durasi'] = total_durasi
+df['total_charge'] = total_charge
+df['total_calls'] = total_calls
+## Q1 : Bagaimana pengaruh lama panggilan terhadap harga
+A1: Positif Correlation ##
+
+plt.figure(figsize=(5,5))
+plt.scatter(x='total_durasi',y='total_charge',data=df, color='yellow')
+plt.xlabel('Durasi')
+plt.ylabel('Price')
+
+## Dapat dilihat bahwa mayoritas dari pelanggan melakukan total durasi panggilan selama 500 hingga kurang lebih 650 menit dan mendapatkan charge sebesar 50 hingga 65. Total_durasi dan Total Charge memiliki korelasi positif, dimana semakin meningkat total panggilan harga tagihan akan semakin tinggi ##
+## Insight
+dapat dilakukan promo panggilan, atau gratis panggilan berdasarkan durasi ##
+
+sns.histplot(df.total_durasi,bins=10) ##Q2 : Pengaruh jumlah panggilan terhadap harga, A2 : No Correlation ##
+
+plt.figure(figsize=(5,5))
+plt.scatter(x='total_calls',y='total_charge',data=df, color='yellow')
+plt.xlabel('Panggilan')
+plt.ylabel('Price')
+
+sns.histplot(df.total_calls,bins=10)
+## Total calls tidak memiliki korelasi terhadap Total_charge. Sehingga penentuan total tagihan tidak berdasarkan jumlah panggilan melainkan jumlah durasi, mayoritas pelanggan melakukan panggilan sebanyak kurang lebih 270 hingga 350 setiap periode langganan. ##
+
+## Data Preprocessing ##
+#Features and Mapping
+df.nunique().sort_values()
+
+# Dropping column yang tidak digunakan
+df.drop(columns=['account_length', 'state', 'total_day_minutes', 'total_day_charge', 'total_eve_minutes', 'total_eve_charge', 'total_night_minutes',
+                       'total_night_charge', 'total_intl_minutes', 'total_day_calls', 'total_eve_calls', 'total_night_calls', 'total_intl_calls'], inplace=True)
+
+#Mengganti string 'yes' 'no'menjadi dummy
+df['international_plan'] = df['international_plan'].map({'yes': 1, 'no': 0})
+df['voice_mail_plan'] = df['voice_mail_plan'].map({'yes': 1, 'no': 0})
+df['area_code'] = df['area_code'].map({'area_code_415': 1, 'area_code_408':2, 'area_code_510': 3})
+df['churn'] = df['churn'].map({'yes': 1, 'no': 0})
+
+sns.heatmap(df.corr())
+
+#Melakukan treatment terhadap multikolinieritas
+df.drop(columns=['number_vmail_messages'], inplace=True)
+sns.heatmap(df.corr())
+df.hist(bins=50, figsize=(20,15))
+
+## Data Modeling ##
+#Drop Target Variable
+X = df.drop('churn' , 1 )
+y = df['churn']
+
+#Train-test Split
+#Kami menggunakan test size 20%, dan random_state pada d123
+# Split data ke training(80%) dan testing(2%).
+from sklearn.model_selection import train_test_split
+X_train,X_test,y_train,y_test = train_test_split(X, y, test_size = 0.2, random_state =0)
+
+## Model yang digunakan:
+Logistic Regression
+K Nearest Neighbors
+Decission Tree
+Random Forest ##
+
+#Feature Scalling
+sc_X = StandardScaler()
+X_train = sc_X.fit_transform(X_train)
+X_test = sc_X.transform(X_test)
+
+#Logistic Regression
+#Feature Scaling
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+
+#Fitting Logistic Regression di Training Set
+logreg = LogisticRegression(random_state = 0)
+logreg.fit(X_train, y_train)
+
+#Predicting Test Result
+y_pred = logreg.predict(X_test)
+y_pred
+
+# Evaluating Model
+from sklearn.metrics import confusion_matrix
+conmat = confusion_matrix(y_test, y_pred)
+conmat
+
+#Accuracy dan Missclassification Rate
+accuracy1 = (726 + 15) / 100
+print('Accuracy rate dari model Logistic Regression adalah: ' + str(accuracy1))
+missclass1 = (9 + 100) / 100
+print('Missclassification rate dari model Logistic Regression adalah: ' + str(missclass1))
+
+## Decision Tree ##
+dtc = DecisionTreeClassifier()
+dtc.fit(X_train, y_train)
+
+# Predict Model
+predictions_tree = dtc.predict(X_test)
+predictions_tree
+
+# Evaluasi Model
+from sklearn.metrics import classification_report, confusion_matrix
+print(classification_report(y_test, predictions_tree))
+
+print(confusion_matrix(y_test, predictions_tree))
+
+#Accuracy dan Missclassification Rate
+accuracy2 = (675 + 69) / 100
+print('Accuracy rate dari model Decisions Tree adalah: ' + str(accuracy2))
+missclass2 = (60 + 46) / 100
+print('Missclassification rate dari model Decisions Tree adalah: ' + str(missclass2))
+
+## Random Forest ##
+from sklearn.ensemble import RandomForestClassifier
+rforest = RandomForestClassifier(n_estimators=100)
+rforest.fit(X_train, y_train)
+
+rforest_pred = rforest.predict(X_test)
+print(classification_report(y_test, rforest_pred))
+print(confusion_matrix(y_test, rforest_pred))
+
+#Accuracy dan Missclassification Rate
+accuracy3 = (722 + 68) / 100
+print('Accuracy rate dari model Random Forest adalah: ' + str(accuracy3))
+missclass3 = (13 + 47) / 100
+print('Missclassification rate dari model Random Forest adalah: ' + str(missclass3))
+
+## KNN ##
+#Fit KNN di Train set
+from sklearn.neighbors import KNeighborsClassifier
+classifier = KNeighborsClassifier(n_neighbors = 5, metric = 'minkowski', p=2)
+classifier.fit(X_train, y_train)
+
+#Predict test
+knn_predict = classifier.predict(X_test)
+
+#Evaluasi Model
+from sklearn.metrics import confusion_matrix
+cm = confusion_matrix(y_test, knn_predict)
+cm
+
+#Accuracy dan Missclassification Rate
+accuracy4 = (714 + 52) / 100
+print('Accuracy rate dari model KNN adalah: ' + str(accuracy4))
+missclass4 = (21 + 63) / 100
+print('Missclassification rate dari model KNN adalah: ' + str(missclass4))
+
+## KESIMPULAN ##
+# Random Forest memiliki accuracy paling tinggi
+print('----Logistic Regression----')
+print('Accuracy rate dari model Logistic Regression adalah: ' + str(accuracy1))
+print('Missclassification rate dari model Logistic Regression adalah: ' + str(missclass1))
+print('----Decisions Tree----')
+print('Accuracy rate dari model Decisions Tree adalah: ' + str(accuracy2))
+print('Missclassification rate dari model Decisions Tree adalah: ' + str(missclass2))
+print('----Random Forest----')
+print('Accuracy rate dari model Random Forest adalah: ' + str(accuracy3))
+print('Missclassification rate dari model Random Forest adalah: ' + str(missclass3))
+print('----KNN----')
+print('Accuracy rate dari model KNN adalah: ' + str(accuracy4))
+print('Missclassification rate dari model KNN adalah: ' + str(missclass4))
+
+#Penyimpanan Model
+import pickle
+rforest = RandomForestClassifier(n_estimators=100)
+rforest = rforest.fit(X_train, y_train)
+pickle.dump(rforest, open('forest.pkl', 'wb'))
+
+## PEMAKAIAN PADA DATA TEST (IN PROCESS.....) ##
+from google.colab import files
+uploaded = files.upload()
+
+df = pd.read_csv('/content/Data Test.csv')
+df.head()
+
+#Membuat fungsi preprocessing untuk label encoding data yang baru masuk
+def Preprocess(data):
+   # Assign new variable
+   total_durasi= df['total_day_minutes'] + df['total_eve_minutes'] + df['total_night_minutes']
+   total_charge = df['total_day_charge'] + df['total_eve_charge'] + df['total_night_charge']
+   total_calls = df['total_day_calls'] + df['total_eve_calls'] + df['total_night_calls']
+
+   df['total_durasi'] = total_durasi
+   df['total_charge'] = total_charge
+   df['total_calls'] = total_calls
+   #Mengganti string 'yes' 'no'menjadi dummy
+   df['international_plan'] = df['international_plan'].map({'yes': 1, 'no': 0})
+   df['voice_mail_plan'] = df['voice_mail_plan'].map({'yes': 1, 'no': 0})
+   df['area_code'] = df['area_code'].map({'area_code_415': 1, 'area_code_408':2, 'area_code_510': 3})
+   # Dropping column yang tidak digunakan
+   df.drop(columns=['account_length', 'state', 'total_day_minutes', 'total_day_charge', 'total_eve_minutes', 'total_eve_charge', 'total_night_minutes',
+                       'total_night_charge', 'total_intl_minutes', 'total_day_calls', 'total_eve_calls', 'total_night_calls', 'total_intl_calls'], inplace=True)
+   #Melakukan treatment terhadap multikolinieritas
+   df.drop(columns=['number_vmail_messages'], inplace=True)
+   #Variable X
+   X = ['area_code', 'international_plan', 'voice_mail_plan', 'total_intl_charge', 'number_customer_service_calls','total_durasi','total_charge','total_calls']
+   return data[X]
+
+df_test = Preprocess(df)
+df_test
+
+#Memanggil Model dan melakukan prediksi
+rforest_model = pickle.load(open('/content/forest.pkl', 'rb'))
+r_forest_test_predictions = rforest_model.predict(df_test)
+print("Predictions:")
+print(r_forest_test_predictions)
